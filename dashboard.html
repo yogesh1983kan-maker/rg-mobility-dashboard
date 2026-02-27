@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Welcome to RG Mobility - Revenue Dashboard Prayagraj Depot</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+  <style>
+    .marquee { width:100%; overflow:hidden; white-space:nowrap; box-sizing:border-box; }
+    .marquee span{
+      display:inline-block;
+      padding-left:100%;
+      animation: marquee 28s linear infinite;
+      color:red; font-weight:bold;
+    }
+    @keyframes marquee { 0%{transform:translate(0,0);} 100%{transform:translate(-100%,0);} }
+
+    .kpi-card { min-width: 220px; text-align: center; }
+
+    .table-container {
+      max-height: 420px;
+      overflow-y: auto;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+    }
+    thead th {
+      position: sticky;
+      top: 0;
+      background: #f8f9fa;
+      z-index: 2;
+      white-space: nowrap;
+    }
+    td { white-space: nowrap; }
+  </style>
+</head>
+
+<body class="container-fluid">
+  <h3 class="text-center mt-3">Prayagraj Depot - Revenue Dashboard and MIS</h3>
+
+  <div id="errBox" class="alert alert-danger mt-3" style="display:none;"></div>
+
+  <div class="row mt-4 align-items-end">
+    <div class="col">
+      <label class="form-label">From</label>
+      <input type="date" id="from_date" class="form-control">
+    </div>
+    <div class="col">
+      <label class="form-label">To</label>
+      <input type="date" id="to_date" class="form-control">
+    </div>
+
+    <div class="col">
+      <label class="form-label">Bus</label>
+      <select id="bus_no" class="form-control">
+        <option value=""></option>
+        {% for b in bus_list %}<option value="{{b}}">{{b}}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="col">
+      <label class="form-label">Reg</label>
+      <select id="reg_no" class="form-control">
+        <option value=""></option>
+        {% for r in reg_list %}<option value="{{r}}">{{r}}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="col">
+      <label class="form-label">Route</label>
+      <select id="route_trip" class="form-control">
+        <option value=""></option>
+        {% for rt in route_list %}<option value="{{rt}}">{{rt}}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="col">
+      <label class="form-label">View</label>
+      <select id="grain" class="form-control">
+        <option value="day" selected>Day-wise</option>
+        <option value="week">Week-wise</option>
+        <option value="month">Month-wise</option>
+      </select>
+    </div>
+
+    <div class="col text-end">
+      <button class="btn btn-primary" onclick="loadData()">Apply</button>
+    </div>
+  </div>
+
+  <div class="row mt-4" id="kpis"></div>
+
+  <div class="marquee mt-3">
+    <span id="forecastText"></span>
+  </div>
+
+  <div class="mt-4">
+    <h5>Load Factor Comparison</h5>
+    <div id="lfGraph"></div>
+  </div>
+
+  <div class="mt-4">
+    <h5>IPKM Comparison</h5>
+    <div id="ipkmGraph"></div>
+  </div>
+
+  <div class="table-container mt-4">
+    <table class="table table-bordered table-sm mb-0" id="table">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+function renderDashboard(r){
+  $("#errBox").hide().text("");
+
+  // If backend returns {error: "..."}
+  if(r && r.error){
+    $("#errBox").show().text("Backend Error: " + r.error);
+    return;
+  }
+
+  // KPI
+  let k = "";
+  if(r.kpis && Array.isArray(r.kpis)){
+    r.kpis.forEach(function(item){
+      k += `
+        <div class="col-md-2 mb-2">
+          <div class="card p-2 kpi-card">
+            <small>${item.label}</small><br>
+            <b>${item.value}</b>
+          </div>
+        </div>`;
+    });
+  }
+  $("#kpis").html(k);
+
+  // Forecast
+  $("#forecastText").text(r.forecast || "");
+
+  // Graphs
+  if(r.lf_graph && r.lf_graph.data){
+    Plotly.newPlot("lfGraph", r.lf_graph.data, r.lf_graph.layout, {responsive:true});
+  } else {
+    $("#lfGraph").html("<p class='text-muted'>No LF data</p>");
+  }
+
+  if(r.ipkm_graph && r.ipkm_graph.data){
+    Plotly.newPlot("ipkmGraph", r.ipkm_graph.data, r.ipkm_graph.layout, {responsive:true});
+  } else {
+    $("#ipkmGraph").html("<p class='text-muted'>No IPKM data</p>");
+  }
+
+  // Table (order preserved by backend)
+  if(r.table && r.table.length > 0){
+    let headers = (r.table_columns && r.table_columns.length > 0)
+                    ? r.table_columns
+                    : Object.keys(r.table[0]);
+
+    let theadHtml = "<tr>";
+    headers.forEach(c => theadHtml += `<th>${c}</th>`);
+    theadHtml += "</tr>";
+    $("#table thead").html(theadHtml);
+
+    let tbodyHtml = "";
+    r.table.forEach(row => {
+      tbodyHtml += "<tr>";
+      headers.forEach(h => {
+        let v = (row[h] === null || row[h] === undefined) ? "" : row[h];
+        tbodyHtml += `<td>${v}</td>`;
+      });
+      tbodyHtml += "</tr>";
+    });
+    $("#table tbody").html(tbodyHtml);
+  } else {
+    $("#table thead").html("");
+    $("#table tbody").html("");
+  }
+}
+
+function loadData(){
+  $.ajax({
+    url: "/data",
+    method: "POST",
+    contentType: "application/json",
+    dataType: "json",
+    data: JSON.stringify({
+      from_date: $("#from_date").val(),
+      to_date: $("#to_date").val(),
+      bus_no: $("#bus_no").val(),
+      reg_no: $("#reg_no").val(),
+      route_trip: $("#route_trip").val(),
+      grain: $("#grain").val()
+    }),
+    success: function(r){
+      renderDashboard(r);
+    },
+    error: function(xhr, status, err){
+      let msg = "Backend Error (" + xhr.status + "): " + (xhr.responseText || status || err || "");
+      console.log(msg);
+      $("#errBox").show().text(msg);
+    }
+  });
+}
+
+$(document).ready(loadData);
+</script>
+
+</body>
+</html>
