@@ -10,7 +10,7 @@ import traceback
 
 app = Flask(__name__)
 
-FILE_PATH = r"E:\Yogesh RG Mobility Data\RG\Data.xlsx"
+FILE_PATH = "Data.xlsx"
 
 BM_LF_FIXED = 70.00
 BM_IPKM_FIXED = 47.00
